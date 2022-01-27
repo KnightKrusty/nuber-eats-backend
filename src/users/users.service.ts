@@ -1,20 +1,20 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import * as Jwt from 'jsonwebtoken';
 import { CreateAccountInput } from './dto/create-account-dto';
 import { LoginInput } from './dto/login.dto';
 import { User } from './entities/user.entity';
-import { ConfigService } from '@nestjs/config';
 import { JwtService } from 'src/jwt/jwt.service';
 import { EditProfileInput } from './dto/edit-profile.dto';
+import { Verification } from './entities/verification.entity';
 
 @Injectable()
 export class UsersService {
   constructor(
     @InjectRepository(User)
     private readonly users: Repository<User>,
-    private readonly config: ConfigService,
+    @InjectRepository(Verification)
+    private readonly verificaitions: Repository<Verification>,
     private readonly jwtService: JwtService,
   ) {}
 
@@ -30,7 +30,15 @@ export class UsersService {
         return { ok: false, error: 'There is a user with that email already' };
       }
 
-      await this.users.save(this.users.create({ email, password, role }));
+      const user = await this.users.save(
+        this.users.create({ email, password, role }),
+      );
+      await this.verificaitions.save(
+        this.verificaitions.create({
+          user,
+        }),
+      );
+
       return { ok: true };
     } catch (e) {
       //make error
@@ -43,7 +51,10 @@ export class UsersService {
     password,
   }: LoginInput): Promise<{ ok: boolean; error?: string; token?: string }> {
     try {
-      const user = await this.users.findOne({ email });
+      const user = await this.users.findOne(
+        { email },
+        { select: ['id', 'password'] },
+      );
 
       const passwordCorrect = await user.checkPassword(password);
 
@@ -94,6 +105,8 @@ export class UsersService {
 
     if (email) {
       user.email = email;
+      user.verified = false;
+      await this.verificaitions.save(this.verificaitions.create({ user }));
     }
 
     if (password) {
@@ -101,5 +114,24 @@ export class UsersService {
     }
 
     return this.users.save(user);
+  }
+
+  async verifyEmail(code: string): Promise<boolean> {
+    try {
+      const verifcation = await this.verificaitions.findOne(
+        { code },
+        { relations: ['user'] },
+      );
+
+      if (verifcation) {
+        verifcation.user.verified = true;
+        this.users.save(verifcation.user);
+        return true;
+      }
+
+      throw new Error();
+    } catch (e) {
+      return false;
+    }
   }
 }
