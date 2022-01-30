@@ -5,8 +5,11 @@ import { CreateAccountInput } from './dto/create-account-dto';
 import { LoginInput } from './dto/login.dto';
 import { User } from './entities/user.entity';
 import { JwtService } from 'src/jwt/jwt.service';
-import { EditProfileInput } from './dto/edit-profile.dto';
+import { EditProfileInput, EditProfileOutput } from './dto/edit-profile.dto';
 import { Verification } from './entities/verification.entity';
+import { UserProfileOutput } from './dto/user-profile.dto';
+import { VerifyEmailOutput } from './dto/verify-email.dto';
+import { MailService } from 'src/mail/mail.service';
 
 @Injectable()
 export class UsersService {
@@ -16,6 +19,7 @@ export class UsersService {
     @InjectRepository(Verification)
     private readonly verificaitions: Repository<Verification>,
     private readonly jwtService: JwtService,
+    private readonly mailService: MailService,
   ) {}
 
   async createAccount({
@@ -33,11 +37,13 @@ export class UsersService {
       const user = await this.users.save(
         this.users.create({ email, password, role }),
       );
-      await this.verificaitions.save(
+      const verificaition = await this.verificaitions.save(
         this.verificaitions.create({
           user,
         }),
       );
+
+      this.mailService.sendVerificationEmail(user.email, verificaition.code);
 
       return { ok: true };
     } catch (e) {
@@ -53,8 +59,24 @@ export class UsersService {
     try {
       const user = await this.users.findOne(
         { email },
-        { select: ['id', 'password'] },
+        { select: ['id', 'password', 'verified'] },
       );
+
+      if (!user) {
+        return {
+          ok: false,
+          error: 'User not found',
+          token: null,
+        };
+      }
+
+      if (!user.verified) {
+        return {
+          ok: false,
+          error: 'Account is not verified',
+          token: null,
+        };
+      }
 
       const passwordCorrect = await user.checkPassword(password);
 
@@ -62,14 +84,6 @@ export class UsersService {
         return {
           ok: false,
           error: 'wrong crendentials',
-          token: null,
-        };
-      }
-
-      if (!user) {
-        return {
-          ok: false,
-          error: 'User not found',
           token: null,
         };
       }
@@ -93,45 +107,67 @@ export class UsersService {
     // make a jwt roken and give it back to user
   }
 
-  async findById(id: number): Promise<User> {
-    return await this.users.findOne({ id });
+  async findById(id: number): Promise<UserProfileOutput> {
+    try {
+      const user = await this.users.findOne({ id });
+
+      return {
+        ok: true,
+        user,
+      };
+    } catch (e) {
+      return { ok: false, error: 'User not found' };
+    }
   }
 
   async editProfile(
     userId: number,
     { email, password }: EditProfileInput,
-  ): Promise<User> {
-    const user = await this.users.findOne(userId);
+  ): Promise<EditProfileOutput> {
+    try {
+      const user = await this.users.findOne(userId);
 
-    if (email) {
-      user.email = email;
-      user.verified = false;
-      await this.verificaitions.save(this.verificaitions.create({ user }));
+      if (email) {
+        user.email = email;
+        user.verified = false;
+        const verification = await this.verificaitions.save(
+          this.verificaitions.create({ user }),
+        );
+
+        this.mailService.sendVerificationEmail(user.email, verification.code);
+      }
+
+      if (password) {
+        user.password = password;
+      }
+
+      this.users.save(user);
+
+      return {
+        ok: true,
+      };
+    } catch (error) {
+      return { ok: false, error: 'Could Not update profile' };
     }
-
-    if (password) {
-      user.password = password;
-    }
-
-    return this.users.save(user);
   }
 
-  async verifyEmail(code: string): Promise<boolean> {
+  async verifyEmail(code: string): Promise<VerifyEmailOutput> {
     try {
-      const verifcation = await this.verificaitions.findOne(
+      const verification = await this.verificaitions.findOne(
         { code },
         { relations: ['user'] },
       );
 
-      if (verifcation) {
-        verifcation.user.verified = true;
-        this.users.save(verifcation.user);
-        return true;
+      if (verification) {
+        verification.user.verified = true;
+        await this.users.save(verification.user);
+        await this.verificaitions.delete(verification.id);
+        return { ok: true };
       }
 
-      throw new Error();
+      return { ok: false, error: 'Verification Not found' };
     } catch (e) {
-      return false;
+      return { ok: false, error: 'Could not verify email' };
     }
   }
 }
