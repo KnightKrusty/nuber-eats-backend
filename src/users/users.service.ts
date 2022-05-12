@@ -1,7 +1,10 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { CreateAccountInput } from './dto/create-account-dto';
+import {
+  CreateAccountInput,
+  CreateAccountOutput,
+} from './dto/create-account-dto';
 import { LoginInput } from './dto/login.dto';
 import { User } from './entities/user.entity';
 import { JwtService } from 'src/jwt/jwt.service';
@@ -26,7 +29,7 @@ export class UsersService {
     email,
     password,
     role,
-  }: CreateAccountInput): Promise<{ ok: boolean; error?: string }> {
+  }: CreateAccountInput): Promise<CreateAccountOutput> {
     try {
       const exists = await this.users.findOne({ email });
 
@@ -109,7 +112,7 @@ export class UsersService {
 
   async findById(id: number): Promise<UserProfileOutput> {
     try {
-      const user = await this.users.findOne({ id });
+      const user = await this.users.findOneOrFail({ id });
 
       return {
         ok: true,
@@ -130,6 +133,7 @@ export class UsersService {
       if (email) {
         user.email = email;
         user.verified = false;
+        await this.verificaitions.delete({ user: { id: user.id } });
         const verification = await this.verificaitions.save(
           this.verificaitions.create({ user }),
         );

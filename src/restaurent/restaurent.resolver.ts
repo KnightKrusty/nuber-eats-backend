@@ -1,6 +1,11 @@
 import { Args, Mutation, Query, Resolver } from '@nestjs/graphql';
-import { CreateRestaurentDto } from './dto/create_restaurent_dto';
-import { UpdateRestaurentDto } from './dto/updateRestaurent_dto';
+import { AuthUser } from 'src/auth/auth-user.decorator';
+import { Role } from 'src/auth/role.decorator';
+import { User } from 'src/users/entities/user.entity';
+import {
+  CreateRestaurentInput,
+  CreateRestaurentOutput,
+} from './dto/create_restaurent_dto';
 import { Restaurent } from './entities/restaurant.entity';
 import { RestaurentService } from './restaurent.service';
 
@@ -8,33 +13,16 @@ import { RestaurentService } from './restaurent.service';
 export class RestaurentResolver {
   constructor(private readonly restaurenService: RestaurentService) {}
 
-  @Query(() => [Restaurent])
-  restaurants(): Promise<Restaurent[]> {
-    return this.restaurenService.getAll();
-  }
-
-  @Mutation(() => Boolean)
+  @Mutation((returns) => CreateRestaurentOutput)
+  @Role(['Owner'])
   async createRestaurant(
-    @Args('input') createRestaurentDto: CreateRestaurentDto,
-  ): Promise<boolean> {
-    try {
-      await this.restaurenService.createRestaurent(createRestaurentDto);
-      return true;
-    } catch (e) {
-      return false;
-    }
-  }
-
-  @Mutation(() => Boolean)
-  async updateRestaurent(
-    @Args('input') updateRestaurent: UpdateRestaurentDto,
-  ): Promise<boolean> {
-    try {
-      await this.restaurenService.updateRestaurent(updateRestaurent);
-      return true;
-    } catch (e) {
-      console.log(e);
-      return false;
-    }
+    @AuthUser() authUser: User,
+    @Args('input') createRestaurentInput: CreateRestaurentInput,
+  ): Promise<CreateRestaurentOutput> {
+    console.log(authUser);
+    return this.restaurenService.createRestaurent(
+      authUser,
+      createRestaurentInput,
+    );
   }
 }
