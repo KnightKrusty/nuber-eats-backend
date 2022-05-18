@@ -18,7 +18,14 @@ import { MailModule } from './mail/mail.module';
 import { Restaurent } from './restaurent/entities/restaurant.entity';
 import { Category } from './restaurent/entities/category.entity';
 import { RestaurentModule } from './restaurent/restaurent.module';
-
+import { Dish } from './restaurent/entities/dish.entity';
+import { OrdersModule } from './orders/orders.module';
+import { Order } from './orders/entities/order.entities';
+import { OrderItem } from './orders/entities/order-item.entity';
+import { CommonModule } from './common/common.module';
+import { PaymentsModule } from './payments/payments.module';
+import { Payment } from './payments/entities/payment.entity';
+const TOKEN_KEY = 'x-jwt';
 @Module({
   imports: [
     ConfigModule.forRoot({
@@ -48,11 +55,29 @@ import { RestaurentModule } from './restaurent/restaurent.module';
       synchronize: process.env.NODE_ENV !== 'prod',
       logging:
         process.env.NODE_ENV !== 'prod' && process.env.NODE_ENV !== 'test',
-      entities: [User, Verification, Restaurent, Category],
+      entities: [
+        User,
+        Verification,
+        Restaurent,
+        Category,
+        Dish,
+        Order,
+        OrderItem,
+        Payment,
+      ],
     }),
     GraphQLModule.forRoot({
+      installSubscriptionHandlers: true,
       autoSchemaFile: true,
-      context: ({ req }) => ({ user: req['user'] }),
+      context: ({ req }) => {
+        const token = req.headers[TOKEN_KEY];
+        return { token };
+      },
+      subscriptions: {
+        'subscriptions-transport-ws': {
+          onConnect: (connection) => ({ token: connection[TOKEN_KEY] }),
+        },
+      },
     }),
     JwtModule.forRoot({
       privateKey: process.env.PRIVATE_KEY,
@@ -66,15 +91,11 @@ import { RestaurentModule } from './restaurent/restaurent.module';
     UsersModule,
     RestaurentModule,
     AuthModule,
+    OrdersModule,
+    CommonModule,
+    PaymentsModule,
   ],
   controllers: [],
   providers: [],
 })
-export class AppModule implements NestModule {
-  configure(consumer: MiddlewareConsumer) {
-    consumer.apply(JwtMiddleware).forRoutes({
-      path: '/graphql',
-      method: RequestMethod.POST,
-    });
-  }
-}
+export class AppModule {}

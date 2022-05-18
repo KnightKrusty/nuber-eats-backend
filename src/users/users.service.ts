@@ -110,6 +110,10 @@ export class UsersService {
     // make a jwt roken and give it back to user
   }
 
+  async findOne(id: number): Promise<User> {
+    return await this.users.findOne({ id });
+  }
+
   async findById(id: number): Promise<UserProfileOutput> {
     try {
       const user = await this.users.findOneOrFail({ id });
